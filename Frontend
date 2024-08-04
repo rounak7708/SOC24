@@ -1,0 +1,229 @@
+npx create-react-app real-estate-frontend
+cd real-estate-frontend
+
+npm install -D tailwindcss
+npx tailwindcss init
+
+// tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./src/**/*.{js,jsx,ts,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+real-estate-frontend/
+│
+├── public/
+├── src/
+│   ├── components/
+│   │   ├── AddProperty.js
+│   │   ├── PropertyList.js
+│   │   └── PropertyCard.js
+│   ├── pages/
+│   │   └── HomePage.js
+│   ├── App.js
+│   ├── index.js
+│   └── index.css
+
+// src/components/AddProperty.js
+import React, { useState } from 'react';
+import axios from 'axios';
+
+const AddProperty = ({ onAddProperty }) => {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    image: '',
+    contact: '',
+    price: ''
+  });
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post('http://localhost:5000/api/properties', formData);
+      onAddProperty(res.data);
+      setFormData({ title: '', description: '', image: '', contact: '', price: '' });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto p-4 bg-white rounded-md shadow-md">
+      <h2 className="text-xl font-bold mb-4">Add Property</h2>
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label className="block mb-2 font-semibold">Title</label>
+          <input
+            type="text"
+            name="title"
+            value={formData.title}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md"
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block mb-2 font-semibold">Description</label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md"
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block mb-2 font-semibold">Image URL</label>
+          <input
+            type="text"
+            name="image"
+            value={formData.image}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md"
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block mb-2 font-semibold">Contact</label>
+          <input
+            type="text"
+            name="contact"
+            value={formData.contact}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md"
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block mb-2 font-semibold">Price</label>
+          <input
+            type="number"
+            name="price"
+            value={formData.price}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md"
+            required
+          />
+        </div>
+        <button type="submit" className="w-full p-2 bg-blue-500 text-white rounded-md">Add Property</button>
+      </form>
+    </div>
+  );
+};
+
+export default AddProperty;
+
+// src/components/PropertyCard.js
+import React from 'react';
+
+const PropertyCard = ({ property, onDelete }) => {
+  return (
+    <div className="bg-white p-4 rounded-md shadow-md">
+      <img src={property.image} alt={property.title} className="w-full h-48 object-cover rounded-md mb-4" />
+      <h3 className="text-xl font-bold mb-2">{property.title}</h3>
+      <p className="text-gray-700 mb-2">{property.description}</p>
+      <p className="text-gray-900 font-semibold mb-4">${property.price}</p>
+      <div className="flex justify-between items-center">
+        <span>Contact: {property.contact}</span>
+        <button
+          onClick={() => onDelete(property._id)}
+          className="bg-red-500 text-white p-2 rounded-md"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default PropertyCard;
+
+// src/components/PropertyList.js
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import PropertyCard from './PropertyCard';
+
+const PropertyList = () => {
+  const [properties, setProperties] = useState([]);
+
+  useEffect(() => {
+    const fetchProperties = async () => {
+      try {
+        const res = await axios.get('http://localhost:5000/api/properties');
+        setProperties(res.data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchProperties();
+  }, []);
+
+  const handleDelete = async (id) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/properties/${id}`);
+      setProperties(properties.filter(property => property._id !== id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {properties.map(property => (
+        <PropertyCard key={property._id} property={property} onDelete={handleDelete} />
+      ))}
+    </div>
+  );
+};
+
+export default PropertyList;
+
+// src/pages/HomePage.js
+import React from 'react';
+import AddProperty from '../components/AddProperty';
+import PropertyList from '../components/PropertyList';
+
+const HomePage = () => {
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-3xl font-bold mb-6">Real Estate Management</h1>
+      <AddProperty />
+      <PropertyList />
+    </div>
+  );
+};
+
+export default HomePage;
+
+// src/App.js
+import React from 'react';
+import HomePage from './pages/HomePage';
+
+function App() {
+  return (
+    <div>
+      <HomePage />
+    </div>
+  );
+}
+
+export default App;
+
+npm start
