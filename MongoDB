@@ -1,0 +1,284 @@
+const mongoose = require('mongoose');
+
+const connectDB = async () => {
+    try {
+        await mongoose.connect(process.env.MONGO_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        });
+        console.log('MongoDB connected...');
+    } catch (err) {
+        console.error(err.message);
+        process.exit(1);
+    }
+};
+
+module.exports = connectDB;
+
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const UserSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+    },
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+    },
+    password: {
+        type: String,
+        required: true,
+    },
+});
+
+// Password hashing middleware
+UserSchema.pre('save', async function (next) {
+    if (!this.isModified('password')) return next();
+    this.password = await bcrypt.hash(this.password, 10);
+    next();
+});
+
+module.exports = mongoose.model('User', UserSchema);
+
+const mongoose = require('mongoose');
+
+const PropertySchema = new mongoose.Schema({
+    title: {
+        type: String,
+        required: true,
+    },
+    description: {
+        type: String,
+        required: true,
+    },
+    price: {
+        type: Number,
+        required: true,
+    },
+    location: {
+        type: String,
+        required: true,
+    },
+    imageUrl: {
+        type: String,
+        required: true,
+    },
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    },
+});
+
+module.exports = mongoose.model('Property', PropertySchema);
+
+const express = require('express');
+const connectDB = require('./config/db');
+const cors = require('cors');
+const authRoutes = require('./routes/authRoutes');
+const propertyRoutes = require('./routes/propertyRoutes');
+require('dotenv').config();
+
+const app = express();
+
+// Connect to MongoDB
+connectDB();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/properties', propertyRoutes);
+
+// Server listening
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+const express = require('express');
+const { register, login } = require('../controllers/authController');
+const router = express.Router();
+
+router.post('/register', register);
+router.post('/login', login);
+
+module.exports = router;
+
+const express = require('express');
+const { getProperties, addProperty } = require('../controllers/propertyController');
+const authMiddleware = require('../middleware/authMiddleware');
+const router = express.Router();
+
+router.get('/', getProperties);
+router.post('/', authMiddleware, addProperty);
+
+module.exports = router;
+
+const jwt = require('jsonwebtoken');
+
+module.exports = (req, res, next) => {
+    const token = req.header('Authorization').split(' ')[1];
+    if (!token) return res.status(401).json({ msg: 'No token, authorization denied' });
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (err) {
+        res.status(401).json({ msg: 'Token is not valid' });
+    }
+};
+
+import React from 'react';
+import ReactDOM from 'react-dom';
+import { Provider } from 'react-redux';
+import { BrowserRouter as Router } from 'react-router-dom';
+import App from './App';
+import store from './redux/store';
+import './index.css';
+
+ReactDOM.render(
+    <Provider store={store}>
+        <Router>
+            <App />
+        </Router>
+    </Provider>,
+    document.getElementById('root')
+);
+
+import React from 'react';
+import { Route, Switch } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import HomePage from './pages/HomePage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import PropertyPage from './pages/PropertyPage';
+
+const App = () => {
+    return (
+        <>
+            <Navbar />
+            <Switch>
+                <Route path="/" component={HomePage} exact />
+                <Route path="/login" component={LoginPage} />
+                <Route path="/register" component={RegisterPage} />
+                <Route path="/property/:id" component={PropertyPage} />
+            </Switch>
+        </>
+    );
+};
+
+export default App;
+
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import PropertyList from '../components/PropertyList';
+
+const HomePage = () => {
+    const [properties, setProperties] = useState([]);
+
+    useEffect(() => {
+        const fetchProperties = async () => {
+            const response = await axios.get('/api/properties');
+            setProperties(response.data);
+        };
+        fetchProperties();
+    }, []);
+
+    return (
+        <div className="container mx-auto mt-8">
+            <h1 className="text-2xl font-bold mb-4">Properties</h1>
+            <PropertyList properties={properties} />
+        </div>
+    );
+};
+
+export default HomePage;
+
+import React from 'react';
+import PropertyItem from './PropertyItem';
+
+const PropertyList = ({ properties }) => {
+    return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {properties.map((property) => (
+                <PropertyItem key={property._id} property={property} />
+            ))}
+        </div>
+    );
+};
+
+export default PropertyList;
+
+import React from 'react';
+import { Link } from 'react-router-dom';
+
+const PropertyItem = ({ property }) => {
+    return (
+        <div className="bg-white p-4 rounded shadow">
+            <img src={property.imageUrl} alt={property.title} className="w-full h-48 object-cover rounded" />
+            <h3 className="mt-4 text-lg font-bold">{property.title}</h3>
+            <p className="text-gray-700">{property.location}</p>
+            <p className="text-gray-900 font-bold">${property.price}</p>
+            <Link to={`/property/${property._id}`} className="text-blue-500 mt-2 inline-block">
+                View Details
+            </Link>
+        </div>
+    );
+};
+
+export default PropertyItem;
+
+import React, { useState } from 'react';
+import axios from 'axios';
+import { useHistory } from 'react-router-dom';
+
+const LoginPage = () => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const history = useHistory();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            const response = await axios.post('/api/auth/login', { email, password });
+            localStorage.setItem('token', response.data.token);
+            history.push('/');
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    return (
+        <div className="container mx-auto mt-8">
+            <h1 className="text-2xl font-bold mb-4">Login</h1>
+            <form onSubmit={handleSubmit}>
+                <input
+                    type="email"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="block border rounded p-2 mb-2 w-full"
+                />
+                <input
+                    type="password"
+                    placeholder="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="block border rounded p-2 mb-2 w-full"
+                />
+                <button type="submit" className="bg-blue-500 text-white py-2 px-4 rounded">
+                    Login
+                </button>
+            </form>
+        </div>
+    );
+};
+
+export default LoginPage;
+
