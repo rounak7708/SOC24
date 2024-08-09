@@ -1,0 +1,322 @@
+real-estate-app/
+│
+├── backend/
+│   ├── config/
+│   ├── models/
+│   ├── routes/
+│   ├── controllers/
+│   ├── server.js
+│   └── package.json
+│
+└── frontend/
+    ├── public/
+    ├── src/
+    │   ├── components/
+    │   ├── pages/
+    │   ├── redux/
+    │   ├── App.js
+    │   ├── index.js
+    │   └── package.json
+    └── tailwind.config.js
+
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+require('dotenv').config();
+
+// Import Routes
+const userRoutes = require('./routes/userRoutes');
+const propertyRoutes = require('./routes/propertyRoutes');
+
+// Initialize Express App
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use('/api/users', userRoutes);
+app.use('/api/properties', propertyRoutes);
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+}).then(() => {
+    console.log('Connected to MongoDB');
+}).catch(err => {
+    console.error('Error connecting to MongoDB', err);
+});
+
+// Start Server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const userSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+}, { timestamps: true });
+
+// Password Hashing
+userSchema.pre('save', async function (next) {
+    if (!this.isModified('password')) {
+        next();
+    }
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+});
+
+const User = mongoose.model('User', userSchema);
+
+module.exports = User;
+
+const mongoose = require('mongoose');
+
+const propertySchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    price: { type: Number, required: true },
+    location: { type: String, required: true },
+    imageUrl: { type: String },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+}, { timestamps: true });
+
+const Property = mongoose.model('Property', propertySchema);
+
+module.exports = Property;
+
+const express = require('express');
+const { registerUser, loginUser } = require('../controllers/userController');
+const router = express.Router();
+
+// User Registration
+router.post('/register', registerUser);
+
+// User Login
+router.post('/login', loginUser);
+
+module.exports = router;
+
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+// Register User
+exports.registerUser = async (req, res) => {
+    const { name, email, password } = req.body;
+    try {
+        const user = await User.create({ name, email, password });
+        res.status(201).json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            token: generateToken(user._id),
+        });
+    } catch (error) {
+        res.status(400).json({ message: 'User already exists' });
+    }
+};
+
+// Login User
+exports.loginUser = async (req, res) => {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (user && (await bcrypt.compare(password, user.password))) {
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            token: generateToken(user._id),
+        });
+    } else {
+        res.status(401).json({ message: 'Invalid email or password' });
+    }
+};
+
+// Generate JWT Token
+const generateToken = (id) => {
+    return jwt.sign({ id }, process.env.JWT_SECRET, {
+        expiresIn: '30d',
+    });
+};
+
+const express = require('express');
+const { getProperties, createProperty } = require('../controllers/propertyController');
+const { protect } = require('../middleware/authMiddleware');
+const router = express.Router();
+
+// Get All Properties
+router.get('/', getProperties);
+
+// Create New Property
+router.post('/', protect, createProperty);
+
+module.exports = router;
+
+const Property = require('../models/Property');
+
+// Get All Properties
+exports.getProperties = async (req, res) => {
+    const properties = await Property.find({});
+    res.json(properties);
+};
+
+// Create New Property
+exports.createProperty = async (req, res) => {
+    const { title, description, price, location, imageUrl } = req.body;
+    const property = new Property({
+        title,
+        description,
+        price,
+        location,
+        imageUrl,
+        user: req.user._id
+    });
+    const createdProperty = await property.save();
+    res.status(201).json(createdProperty);
+};
+
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+exports.protect = async (req, res, next) => {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        try {
+            token = req.headers.authorization.split(' ')[1];
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            req.user = await User.findById(decoded.id).select('-password');
+            next();
+        } catch (error) {
+            res.status(401).json({ message: 'Not authorized, token failed' });
+        }
+    }
+    if (!token) {
+        res.status(401).json({ message: 'Not authorized, no token' });
+    }
+};
+
+import React from 'react';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import HomePage from './pages/HomePage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import PropertyPage from './pages/PropertyPage';
+import Header from './components/Header';
+
+function App() {
+    return (
+        <Router>
+            <Header />
+            <main className="container mx-auto px-4">
+                <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/register" element={<RegisterPage />} />
+                    <Route path="/property/:id" element={<PropertyPage />} />
+                </Routes>
+            </main>
+        </Router>
+    );
+}
+
+export default App;
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+import { Provider } from 'react-redux';
+import store from './redux/store';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+    <Provider store={store}>
+        <App />
+    </Provider>
+);
+
+import React, { useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchProperties } from '../redux/actions/propertyActions';
+
+const HomePage = () => {
+    const dispatch = useDispatch();
+    const { properties } = useSelector(state => state.propertyList);
+
+    useEffect(() => {
+        dispatch(fetchProperties());
+    }, [dispatch]);
+
+    return (
+        <div>
+            <h1>Properties</h1>
+            <div className="grid grid-cols-3 gap-4">
+                {properties.map(property => (
+                    <div key={property._id} className="border p-4">
+                        <h2>{property.title}</h2>
+                        <p>{property.description}</p>
+                        <p>${property.price}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export default HomePage;
+
+import axios from 'axios';
+import { PROPERTY_LIST_SUCCESS } from '../constants/propertyConstants';
+
+export const fetchProperties = () => async (dispatch) => {
+    const { data } = await axios.get('/api/properties');
+    dispatch({ type: PROPERTY_LIST_SUCCESS, payload: data });
+};
+
+export const PROPERTY_LIST_SUCCESS = 'PROPERTY_LIST_SUCCESS';
+
+import { PROPERTY_LIST_SUCCESS } from '../constants/propertyConstants';
+
+export const propertyListReducer = (state = { properties: [] }, action) => {
+    switch (action.type) {
+        case PROPERTY_LIST_SUCCESS:
+            return { properties: action.payload };
+        default:
+            return state;
+    }
+};
+
+import { createStore, combineReducers, applyMiddleware } from 'redux';
+import thunk from 'redux-thunk';
+import { propertyListReducer } from './reducers/propertyReducer';
+
+const reducer = combineReducers({
+    propertyList: propertyListReducer,
+});
+
+const store = createStore(reducer, applyMiddleware(thunk));
+
+export default store;
+
+module.exports = {
+    content: [
+        "./src/**/*.{js,jsx,ts,tsx}",
+    ],
+    theme: {
+        extend: {},
+    },
+    plugins: [],
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
