@@ -1,0 +1,162 @@
+npm init -y
+npm install express mongoose cors dotenv
+npm install bcryptjs jsonwebtoken
+npm install nodemon --save-dev
+
+backend/
+├── config/
+│   └── db.js
+├── controllers/
+│   ├── authController.js
+│   └── propertyController.js
+├── middleware/
+│   └── authMiddleware.js
+├── models/
+│   ├── User.js
+│   └── Property.js
+├── routes/
+│   ├── authRoutes.js
+│   └── propertyRoutes.js
+├── .env
+├── server.js
+└── package.json
+
+const mongoose = require('mongoose');
+const connectDB = async () => {
+    try {
+        await mongoose.connect(process.env.MONGO_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        });
+        console.log('MongoDB connected');
+    } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+    }
+};
+module.exports = connectDB;
+
+const mongoose = require('mongoose');
+const UserSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+});
+module.exports = mongoose.model('User', UserSchema);
+
+const mongoose = require('mongoose');
+const PropertySchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    price: { type: Number, required: true },
+    location: { type: String, required: true },
+    imageUrl: { type: String, required: true },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+});
+module.exports = mongoose.model('Property', PropertySchema);
+
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+exports.register = async (req, res) => {
+    const { name, email, password } = req.body;
+    try {
+        const user = new User({ name, email, password: bcrypt.hashSync(password, 8) });
+        await user.save();
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        res.json({ token });
+    } catch (error) {
+        res.status(500).send('Server error');
+    }
+};
+
+exports.login = async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user || !bcrypt.compareSync(password, user.password)) {
+            return res.status(400).send('Invalid credentials');
+        }
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        res.json({ token });
+    } catch (error) {
+        res.status(500).send('Server error');
+    }
+};
+
+const Property = require('../models/Property');
+
+exports.getProperties = async (req, res) => {
+    try {
+        const properties = await Property.find().populate('user', 'name');
+        res.json(properties);
+    } catch (error) {
+        res.status(500).send('Server error');
+    }
+};
+
+exports.addProperty = async (req, res) => {
+    const { title, description, price, location, imageUrl } = req.body;
+    try {
+        const property = new Property({
+            title,
+            description,
+            price,
+            location,
+            imageUrl,
+            user: req.user.id,
+        });
+        await property.save();
+        res.json(property);
+    } catch (error) {
+        res.status(500).send('Server error');
+    }
+};
+
+const jwt = require('jsonwebtoken');
+module.exports = (req, res, next) => {
+    const token = req.header('Authorization').split(' ')[1];
+    if (!token) return res.status(401).send('No token, authorization denied');
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (error) {
+        res.status(401).send('Token is not valid');
+    }
+};
+
+const express = require('express');
+const { register, login } = require('../controllers/authController');
+const router = express.Router();
+router.post('/register', register);
+router.post('/login', login);
+module.exports = router;
+
+const express = require('express');
+const { getProperties, addProperty } = require('../controllers/propertyController');
+const auth = require('../middleware/authMiddleware');
+const router = express.Router();
+router.get('/', getProperties);
+router.post('/', auth, addProperty);
+module.exports = router;
+
+const express = require('express');
+const connectDB = require('./config/db');
+const authRoutes = require('./routes/authRoutes');
+const propertyRoutes = require('./routes/propertyRoutes');
+const cors = require('cors');
+require('dotenv').config();
+const app = express();
+connectDB();
+app.use(cors());
+app.use(express.json());
+app.use('/api/auth', authRoutes);
+app.use('/api/properties', propertyRoutes);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret
+
